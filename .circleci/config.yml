@@ -1,0 +1,55 @@
+version: 2
+jobs:
+  build:
+    docker:
+      # CircleCI Python images available at: https://hub.docker.com/r/circleci/python/
+      - image: circleci/python:3.7
+        auth:
+          username: $DOCKERHUB_USERNAME
+          password: $DOCKER_HUB_PWD
+        environment:
+          PIPENV_VENV_IN_PROJECT: true
+          DATABASE_URL: postgresql://root@localhost/circle_test?sslmode=disable
+      - image: circleci/postgres:9.6.2
+        auth:
+          username: $DOCKERHUB_USERNAME
+          password: $DOCKER_HUB_PWD
+        environment:
+          POSTGRES_USER: root
+          POSTGRES_DB: circle_test
+    steps:
+      - checkout
+      - run: sudo chown -R circleci:circleci /usr/local/bin
+      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.7/site-packages
+      - restore_cache:
+          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+      - run:
+          command: |
+            export CONDUIT_SECRET='something-really-secret'
+            export FLASK_APP=/path/to/autoapp.py
+            export FLASK_DEBUG=1
+            sudo pip install pipenv
+            pipenv lock
+            pipenv install
+            pip install -r requirements/dev.txt --user
+      - save_cache:
+          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+          paths:
+            - "venv"
+  back-deploy-heroku:
+    docker:
+      - image: buildpack-deps:trusty
+    steps:
+      - checkout
+      - run:
+          name: Heroku Deploy
+          command: echo $DEVOPSTP
+            git push https://heroku:$HEROKUAPIUSR@git.heroku.com/$DEVOPSTP.git main
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build
+      - back-deploy-heroku:
+          requires:
+            - build
